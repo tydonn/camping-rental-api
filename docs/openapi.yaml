@@ -1,0 +1,663 @@
+openapi: 3.1.0
+info:
+  title: Camping Rental API
+  version: 1.0.0
+  description: |
+    REST API sistem persewaan alat camping berskala UMKM.
+
+    Autentikasi menggunakan token Laravel Sanctum (`Bearer {token}`).
+    Pembayaran dilakukan secara manual: pelanggan melaporkan pembayaran,
+    admin memverifikasi atau menolaknya.
+servers:
+  - url: http://localhost:8000/api
+tags:
+  - name: Auth
+  - name: Katalog (Publik)
+  - name: Booking
+  - name: Pembayaran
+  - name: Admin - Kategori
+  - name: Admin - Alat
+  - name: Admin - Pembayaran
+  - name: Admin - Booking
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+  schemas:
+    User:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        email: { type: string, format: email }
+        role: { type: string, enum: [admin, pelanggan] }
+    Category:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        equipment_count: { type: integer, description: "Hanya muncul pada daftar admin" }
+    Equipment:
+      type: object
+      properties:
+        id: { type: integer }
+        category:
+          $ref: "#/components/schemas/Category"
+        name: { type: string }
+        description: { type: string, nullable: true }
+        price_per_day: { type: string, example: "80000.00" }
+        stock: { type: integer }
+        photo: { type: string, nullable: true }
+    Availability:
+      type: object
+      properties:
+        equipment_id: { type: integer }
+        name: { type: string }
+        start_date: { type: string, format: date }
+        end_date: { type: string, format: date }
+        stock: { type: integer }
+        booked: { type: integer }
+        requested_quantity: { type: integer }
+        available: { type: integer }
+        is_available: { type: boolean }
+    BookingItem:
+      type: object
+      properties:
+        id: { type: integer }
+        equipment: { $ref: "#/components/schemas/Equipment" }
+        equipment_id: { type: integer }
+        quantity: { type: integer }
+        subtotal: { type: string, description: "Snapshot harga saat booking dibuat" }
+    Booking:
+      type: object
+      properties:
+        id: { type: integer }
+        user_id: { type: integer }
+        start_date: { type: string, format: date }
+        end_date: { type: string, format: date }
+        duration_days: { type: integer, description: "Jumlah hari sewa (inklusif)" }
+        status:
+          type: string
+          enum: [pending, paid, confirmed, completed, cancelled]
+          description: |
+            pending: menunggu pembayaran · paid: pembayaran terverifikasi ·
+            confirmed: alat diserahkan (stok berkurang) · completed: alat dikembalikan (stok kembali)
+        total_amount: { type: string }
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/BookingItem" }
+        payments:
+          type: array
+          description: "Riwayat laporan pembayaran, terbaru lebih dulu. Catatan: saat payment ditolak, booking.status tetap pending — baca status dari entri payments."
+          items: { $ref: "#/components/schemas/Payment" }
+        created_at: { type: string, format: date-time }
+    Payment:
+      type: object
+      properties:
+        id: { type: integer }
+        booking_id: { type: integer }
+        method: { type: string, enum: [transfer, qris, cash] }
+        status: { type: string, enum: [pending, verified, rejected] }
+        note: { type: string, nullable: true }
+        amount: { type: string }
+        paid_at: { type: string, format: date-time, nullable: true }
+        verified_at: { type: string, format: date-time, nullable: true }
+        verifier: { $ref: "#/components/schemas/User" }
+    ValidationError:
+      type: object
+      properties:
+        message: { type: string }
+        errors:
+          type: object
+          additionalProperties:
+            type: array
+            items: { type: string }
+
+  responses:
+    Unprocessable:
+      description: Validasi gagal
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ValidationError" }
+    Unauthorized:
+      description: Token tidak valid/kadaluarsa
+      content:
+        application/json:
+          schema:
+            type: object
+            properties: { message: { type: string } }
+    Forbidden:
+      description: Role tidak memiliki akses
+      content:
+        application/json:
+          schema:
+            type: object
+            properties: { message: { type: string } }
+    NotFound:
+      description: Data tidak ditemukan
+      content:
+        application/json:
+          schema:
+            type: object
+            properties: { message: { type: string } }
+
+paths:
+  /register:
+    post:
+      tags: [Auth]
+      summary: Registrasi pelanggan & terbitkan token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, email, password, password_confirmation]
+              properties:
+                name: { type: string }
+                email: { type: string, format: email }
+                password: { type: string, minLength: 8 }
+                password_confirmation: { type: string }
+      responses:
+        "201":
+          description: Berhasil
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: "#/components/schemas/User" }
+                  token: { type: string }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+
+  /login:
+    post:
+      tags: [Auth]
+      summary: Login & terbitkan token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string }
+      responses:
+        "200":
+          description: Berhasil
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: "#/components/schemas/User" }
+                  token: { type: string }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+
+  /me:
+    get:
+      tags: [Auth]
+      summary: Profil user yang sedang login
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Berhasil
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: "#/components/schemas/User" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /logout:
+    post:
+      tags: [Auth]
+      summary: Hapus token aktif
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: Logout berhasil }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /equipment:
+    get:
+      tags: [Katalog (Publik)]
+      summary: Daftar & filter katalog alat
+      parameters:
+        - { name: search, in: query, schema: { type: string }, description: Cari nama alat }
+        - { name: category_id, in: query, schema: { type: integer } }
+        - { name: min_price, in: query, schema: { type: number } }
+        - { name: max_price, in: query, schema: { type: number } }
+        - { name: available_only, in: query, schema: { type: boolean }, description: Hanya stock > 0 }
+        - { name: sort_by, in: query, schema: { type: string, default: name } }
+        - { name: sort_dir, in: query, schema: { type: string, enum: [asc, desc], default: asc } }
+        - { name: per_page, in: query, schema: { type: integer, default: 15, maximum: 100 } }
+        - { name: page, in: query, schema: { type: integer } }
+      responses:
+        "200":
+          description: Daftar alat (terpaginasi)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/Equipment" }
+                  links: { type: object }
+                  meta: { type: object }
+
+  /equipment/{id}:
+    get:
+      tags: [Katalog (Publik)]
+      summary: Detail alat
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Detail alat
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: "#/components/schemas/Equipment" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /equipment/{id}/availability:
+    get:
+      tags: [Katalog (Publik)]
+      summary: Cek ketersediaan stok per rentang tanggal
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+        - { name: start_date, in: query, required: true, schema: { type: string, format: date }, description: "≥ hari ini" }
+        - { name: end_date, in: query, required: true, schema: { type: string, format: date }, description: "≥ start_date" }
+        - { name: quantity, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+      responses:
+        "200":
+          description: Ketersediaan
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: "#/components/schemas/Availability" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+
+  /bookings:
+    get:
+      tags: [Booking]
+      summary: Riwayat booking milik user
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: per_page, in: query, schema: { type: integer, default: 15 } }
+        - { name: page, in: query, schema: { type: integer } }
+      responses:
+        "200":
+          description: Daftar booking
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/Booking" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      tags: [Booking]
+      summary: Buat booking baru (status pending, subtotal snapshot)
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [start_date, end_date, items]
+              properties:
+                start_date: { type: string, format: date, example: "2026-09-10" }
+                end_date: { type: string, format: date, example: "2026-09-12" }
+                items:
+                  type: array
+                  minItems: 1
+                  items:
+                    type: object
+                    required: [equipment_id, quantity]
+                    properties:
+                      equipment_id: { type: integer }
+                      quantity: { type: integer, minimum: 1 }
+      responses:
+        "201":
+          description: Booking dibuat
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: "#/components/schemas/Booking" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "422":
+          description: Validasi gagal / stok tidak mencukupi
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ValidationError" }
+
+  /bookings/{id}:
+    get:
+      tags: [Booking]
+      summary: Detail booking milik sendiri
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Detail booking
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: "#/components/schemas/Booking" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /bookings/{id}/payments:
+    post:
+      tags: [Pembayaran]
+      summary: Laporkan pembayaran manual untuk booking pending
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [method]
+              properties:
+                method: { type: string, enum: [transfer, qris, cash] }
+                note: { type: string, description: "Catatan pelanggan, misal nomor rekening pengirim" }
+      responses:
+        "201":
+          description: Laporan pembayaran dibuat
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: "#/components/schemas/Payment" }
+        "422":
+          description: Booking bukan pending / sudah ada laporan terbuka / method invalid
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ValidationError" }
+
+  /admin/categories:
+    get:
+      tags: [Admin - Kategori]
+      summary: Daftar kategori beserta jumlah alat
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Daftar kategori
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/Category" }
+    post:
+      tags: [Admin - Kategori]
+      summary: Tambah kategori
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string, maxLength: 255 }
+      responses:
+        "200":
+          description: Kategori dibuat
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: "#/components/schemas/Category" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+
+  /admin/categories/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: integer } }
+    get:
+      tags: [Admin - Kategori]
+      summary: Detail kategori
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Detail kategori
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: "#/components/schemas/Category" }
+    put:
+      tags: [Admin - Kategori]
+      summary: Ubah kategori
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string }
+      responses:
+        "200": { description: Kategori diperbarui }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+    delete:
+      tags: [Admin - Kategori]
+      summary: Hapus kategori (ditolak bila masih berisi alat)
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: Kategori dihapus }
+        "409": { description: Kategori masih memiliki alat }
+
+  /admin/equipment:
+    post:
+      tags: [Admin - Alat]
+      summary: Tambah alat baru
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [category_id, name, price_per_day, stock]
+              properties:
+                category_id: { type: integer }
+                name: { type: string }
+                description: { type: string, nullable: true }
+                price_per_day: { type: number, minimum: 0 }
+                stock: { type: integer, minimum: 0 }
+                photo: { type: string, nullable: true }
+      responses:
+        "201":
+          description: Alat dibuat
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: "#/components/schemas/Equipment" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+
+  /admin/equipment/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: integer } }
+    put:
+      tags: [Admin - Alat]
+      summary: Ubah alat (field opsional, hanya yang dikirim)
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                category_id: { type: integer }
+                name: { type: string }
+                description: { type: string, nullable: true }
+                price_per_day: { type: number }
+                stock: { type: integer }
+                photo: { type: string, nullable: true }
+      responses:
+        "200": { description: Alat diperbarui }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+    delete:
+      tags: [Admin - Alat]
+      summary: Hapus alat (ditolak bila punya riwayat booking)
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: Alat dihapus }
+        "409": { description: Alat memiliki riwayat booking }
+
+  /admin/payments:
+    get:
+      tags: [Admin - Pembayaran]
+      summary: Daftar pembayaran
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: status, in: query, schema: { type: string, enum: [pending, verified, rejected] } }
+        - { name: per_page, in: query, schema: { type: integer, default: 15 } }
+      responses:
+        "200":
+          description: Daftar pembayaran
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/Payment" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /admin/payments/{id}/verify:
+    post:
+      tags: [Admin - Pembayaran]
+      summary: Verifikasi pembayaran → booking menjadi paid
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Payment verified
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: "#/components/schemas/Payment" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+
+  /admin/payments/{id}/reject:
+    post:
+      tags: [Admin - Pembayaran]
+      summary: Tolak pembayaran → booking tetap pending agar dapat lapor ulang
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Payment rejected
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: "#/components/schemas/Payment" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+
+  /admin/bookings:
+    get:
+      tags: [Admin - Booking]
+      summary: Daftar seluruh booking
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: status, in: query, schema: { type: string, enum: [pending, paid, confirmed, completed, cancelled] } }
+        - { name: per_page, in: query, schema: { type: integer, default: 15 } }
+        - { name: page, in: query, schema: { type: integer } }
+      responses:
+        "200":
+          description: Daftar booking seluruh user
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/Booking" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /admin/bookings/{id}/confirm:
+    post:
+      tags: [Admin - Booking]
+      summary: Konfirmasi penyerahan alat (paid → confirmed, stok dikurangi dengan row locking)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Booking confirmed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: "#/components/schemas/Booking" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422":
+          description: Status bukan paid / stok fisik tidak mencukupi
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ValidationError" }
+
+  /admin/bookings/{id}/return:
+    post:
+      tags: [Admin - Booking]
+      summary: Konfirmasi pengembalian alat (confirmed → completed, stok ditambah kembali)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Booking completed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: "#/components/schemas/Booking" }
+        "422":
+          description: Status bukan confirmed
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ValidationError" }

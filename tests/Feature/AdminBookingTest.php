@@ -42,6 +42,17 @@ class AdminBookingTest extends TestCase
             ->assertJsonPath('data.0.id', $paid->id);
     }
 
+    public function test_daftar_booking_admin_menyertakan_nama_dan_nomor_hp_pengguna(): void
+    {
+        $this->pelanggan->update(['phone_number' => '089876543210']);
+        Booking::factory()->for($this->pelanggan)->create();
+
+        $this->actingAs($this->admin)->getJson('/api/admin/bookings')
+            ->assertOk()
+            ->assertJsonPath('data.0.user.name', $this->pelanggan->name)
+            ->assertJsonPath('data.0.user.phone_number', '089876543210');
+    }
+
     public function test_confirm_mengurangi_stok_dan_mengubah_status(): void
     {
         $booking = $this->buatBookingPaid(quantity: 2);

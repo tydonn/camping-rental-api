@@ -13,10 +13,12 @@ servers:
 tags:
   - name: Auth
   - name: Katalog (Publik)
+  - name: Settings (Publik)
   - name: Booking
   - name: Pembayaran
   - name: Admin - Kategori
   - name: Admin - Alat
+  - name: Admin - Pengaturan
   - name: Admin - Pembayaran
   - name: Admin - Booking
 
@@ -33,6 +35,7 @@ components:
         name: { type: string }
         email: { type: string, format: email }
         role: { type: string, enum: [admin, pelanggan] }
+        phone_number: { type: string, nullable: true }
     Category:
       type: object
       properties:
@@ -49,7 +52,17 @@ components:
         description: { type: string, nullable: true }
         price_per_day: { type: string, example: "80000.00" }
         stock: { type: integer }
-        photo: { type: string, nullable: true }
+        photo:
+          type: string
+          nullable: true
+          description: "Path relatif file foto di storage publik (mis. equipment/abc123.png). Akses via {base_url}/storage/{path}."
+    SiteSettings:
+      type: object
+      properties:
+        hero_image:
+          type: string
+          nullable: true
+          description: "Path relatif gambar hero landing page di storage publik, null jika belum diatur."
     Availability:
       type: object
       properties:
@@ -75,6 +88,9 @@ components:
       properties:
         id: { type: integer }
         user_id: { type: integer }
+        user:
+          $ref: "#/components/schemas/User"
+          description: "Data pengguna pemesan (nama & nomor HP) — hanya saat relasi user di-load"
         start_date: { type: string, format: date }
         end_date: { type: string, format: date }
         duration_days: { type: integer, description: "Jumlah hari sewa (inklusif)" }
@@ -158,6 +174,10 @@ paths:
               properties:
                 name: { type: string }
                 email: { type: string, format: email }
+                phone_number:
+                  type: string
+                  maxLength: 20
+                  description: "Opsional. Hanya angka, spasi, +, -, ( )."
                 password: { type: string, minLength: 8 }
                 password_confirmation: { type: string }
       responses:
@@ -288,6 +308,20 @@ paths:
                   data: { $ref: "#/components/schemas/Availability" }
         "404": { $ref: "#/components/responses/NotFound" }
         "422": { $ref: "#/components/responses/Unprocessable" }
+
+  /settings:
+    get:
+      tags: [Settings (Publik)]
+      summary: Pengaturan situs untuk tampilan publik
+      responses:
+        "200":
+          description: Nilai pengaturan saat ini
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: "#/components/schemas/SiteSettings" }
 
   /bookings:
     get:
@@ -482,11 +516,12 @@ paths:
     post:
       tags: [Admin - Alat]
       summary: Tambah alat baru
+      description: "Kirim sebagai multipart/form-data karena mendukung upload file foto (jpg/jpeg/png/webp, maks 2MB)."
       security: [{ bearerAuth: [] }]
       requestBody:
         required: true
         content:
-          application/json:
+          multipart/form-data:
             schema:
               type: object
               required: [category_id, name, price_per_day, stock]
@@ -496,7 +531,10 @@ paths:
                 description: { type: string, nullable: true }
                 price_per_day: { type: number, minimum: 0 }
                 stock: { type: integer, minimum: 0 }
-                photo: { type: string, nullable: true }
+                photo:
+                  type: string
+                  format: binary
+                  description: "File foto alat, opsional."
       responses:
         "201":
           description: Alat dibuat
@@ -514,19 +552,30 @@ paths:
     put:
       tags: [Admin - Alat]
       summary: Ubah alat (field opsional, hanya yang dikirim)
+      description: |
+        Karena body berupa multipart/form-data (PHP tidak mem-parsing multipart pada PUT),
+        kirim sebagai POST dengan field `_method=PUT` (method spoofing Laravel).
+        Foto lama otomatis terhapus jika diganti atau jika `remove_photo=true`.
       security: [{ bearerAuth: [] }]
       requestBody:
         content:
-          application/json:
+          multipart/form-data:
             schema:
               type: object
               properties:
+                _method: { type: string, enum: [PUT], description: "Wajib dikirim dengan nilai PUT" }
                 category_id: { type: integer }
                 name: { type: string }
                 description: { type: string, nullable: true }
                 price_per_day: { type: number }
                 stock: { type: integer }
-                photo: { type: string, nullable: true }
+                photo:
+                  type: string
+                  format: binary
+                  description: "File foto baru, opsional."
+                remove_photo:
+                  type: boolean
+                  description: "Set true untuk menghapus foto tanpa mengganti."
       responses:
         "200": { description: Alat diperbarui }
         "422": { $ref: "#/components/responses/Unprocessable" }
@@ -537,6 +586,52 @@ paths:
       responses:
         "200": { description: Alat dihapus }
         "409": { description: Alat memiliki riwayat booking }
+
+  /admin/settings/hero-image:
+    post:
+      tags: [Admin - Pengaturan]
+      summary: Upload/ubah gambar hero landing page
+      description: "Multipart/form-data. Gambar lama otomatis terhapus dari storage saat diganti."
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [photo]
+              properties:
+                photo:
+                  type: string
+                  format: binary
+                  description: "File gambar (jpg/jpeg/png/webp, maks 2MB)."
+      responses:
+        "200":
+          description: Hero image diperbarui
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: "#/components/schemas/SiteSettings" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+    delete:
+      tags: [Admin - Pengaturan]
+      summary: Hapus/reset gambar hero
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Hero image dihapus (hero_image menjadi null)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: "#/components/schemas/SiteSettings" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
 
   /admin/payments:
     get:

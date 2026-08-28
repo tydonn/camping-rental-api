@@ -19,7 +19,7 @@ class StoreEquipmentRequest extends FormRequest
             'description' => ['nullable', 'string'],
             'price_per_day' => ['required', 'numeric', 'min:0', 'decimal:0,2'],
             'stock' => ['required', 'integer', 'min:0'],
-            'photo' => ['nullable', 'string', 'max:255'],
+            'photo' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:2048'],
         ];
     }
 }

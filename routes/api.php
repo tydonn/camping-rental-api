@@ -4,9 +4,11 @@ use App\Http\Controllers\Admin\BookingController as AdminBookingController;
 use App\Http\Controllers\Admin\CategoryController as AdminCategoryController;
 use App\Http\Controllers\Admin\EquipmentController as AdminEquipmentController;
 use App\Http\Controllers\Admin\PaymentController as AdminPaymentController;
+use App\Http\Controllers\Admin\SettingController as AdminSettingController;
 use App\Http\Controllers\BookingController;
 use App\Http\Controllers\EquipmentController;
 use App\Http\Controllers\PaymentController;
+use App\Http\Controllers\SettingController;
 use App\Http\Requests\Auth\LoginRequest;
 use App\Http\Requests\Auth\RegisterRequest;
 use App\Http\Resources\UserResource;
@@ -17,6 +19,7 @@ use Illuminate\Support\Facades\Route;
 Route::get('/equipment', [EquipmentController::class, 'index']);
 Route::get('/equipment/{equipment}/availability', [EquipmentController::class, 'availability']);
 Route::get('/equipment/{equipment}', [EquipmentController::class, 'show']);
+Route::get('/settings', [SettingController::class, 'index']);
 
 Route::post('/register', function (RegisterRequest $request) {
     $user = User::create(array_merge($request->validated(), [
@@ -61,6 +64,11 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::apiResource('equipment', AdminEquipmentController::class)->only([
             'store', 'update', 'destroy',
         ]);
+
+        Route::post('settings/hero-image', [AdminSettingController::class, 'updateHeroImage']);
+        Route::delete('settings/hero-image', [AdminSettingController::class, 'destroyHeroImage']);
+        Route::post('settings/maps-query', [AdminSettingController::class, 'updateMapsQuery']);
+        Route::delete('settings/maps-query', [AdminSettingController::class, 'destroyMapsQuery']);
 
         Route::get('payments', [AdminPaymentController::class, 'index']);
         Route::post('payments/{payment}/verify', [AdminPaymentController::class, 'verify']);

@@ -16,16 +16,21 @@ class AuthTest extends TestCase
         $response = $this->postJson('/api/register', [
             'name' => 'Budi',
             'email' => 'budi@example.com',
+            'phone_number' => '081234567890',
             'password' => 'rahasia123',
             'password_confirmation' => 'rahasia123',
         ]);
 
         $response->assertCreated()
             ->assertJsonPath('data.email', 'budi@example.com')
+            ->assertJsonPath('data.phone_number', '081234567890')
             ->assertJsonPath('data.role', User::ROLE_PELANGGAN)
             ->assertJsonStructure(['token']);
 
-        $this->assertDatabaseHas('users', ['email' => 'budi@example.com']);
+        $this->assertDatabaseHas('users', [
+            'email' => 'budi@example.com',
+            'phone_number' => '081234567890',
+        ]);
     }
 
     public function test_registrasi_gagal_jika_validasi_tidak_terpenuhi(): void
@@ -33,8 +38,9 @@ class AuthTest extends TestCase
         $this->postJson('/api/register', [
             'name' => '',
             'email' => 'bukan-email',
+            'phone_number' => 'nomor-salah!',
             'password' => '123',
-        ])->assertUnprocessable()->assertJsonValidationErrors(['name', 'email', 'password']);
+        ])->assertUnprocessable()->assertJsonValidationErrors(['name', 'email', 'phone_number', 'password']);
     }
 
     public function test_user_dapat_login_dan_mendapat_token(): void

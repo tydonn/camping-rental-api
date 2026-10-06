@@ -63,6 +63,30 @@ components:
           type: string
           nullable: true
           description: "Path relatif gambar hero landing page di storage publik, null jika belum diatur."
+        maps_query:
+          type: string
+          nullable: true
+          description: "Kata kunci pencarian lokasi untuk tautan Google Maps, null jika belum diatur."
+        address:
+          type: string
+          nullable: true
+          maxLength: 255
+          description: "Alamat lengkap usaha, null jika belum diatur."
+        phone:
+          type: string
+          nullable: true
+          maxLength: 20
+          description: "Nomor kontak (angka, spasi, +, -, kurung), null jika belum diatur."
+        email:
+          type: string
+          nullable: true
+          format: email
+          description: "Email kontak, null jika belum diatur."
+        hours:
+          type: string
+          nullable: true
+          maxLength: 120
+          description: "Jam operasional berupa teks bebas, null jika belum diatur."
     Availability:
       type: object
       properties:
@@ -624,6 +648,96 @@ paths:
       responses:
         "200":
           description: Hero image dihapus (hero_image menjadi null)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: "#/components/schemas/SiteSettings" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /admin/settings/maps-query:
+    post:
+      tags: [Admin - Pengaturan]
+      summary: Atur kata kunci pencarian lokasi (Google Maps)
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [query]
+              properties:
+                query: { type: string, maxLength: 255 }
+      responses:
+        "200":
+          description: Pengaturan situs setelah diperbarui
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: "#/components/schemas/SiteSettings" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+    delete:
+      tags: [Admin - Pengaturan]
+      summary: Reset kata kunci pencarian lokasi
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Pengaturan situs setelah maps_query dikosongkan
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: "#/components/schemas/SiteSettings" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /admin/settings/contact:
+    post:
+      tags: [Admin - Pengaturan]
+      summary: Simpan data kontak usaha (alamat, telepon, email, jam operasional)
+      description: "Seluruh field opsional — kirim hanya field yang berubah. Kirim null untuk mengosongkan satu field."
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                address: { type: string, maxLength: 255, nullable: true }
+                phone:
+                  type: string
+                  maxLength: 20
+                  nullable: true
+                  pattern: "^[0-9+\\-\\s()]+$"
+                email: { type: string, format: email, maxLength: 255, nullable: true }
+                hours: { type: string, maxLength: 120, nullable: true }
+      responses:
+        "200":
+          description: Data kontak tersimpan, objek SiteSettings lengkap dikembalikan
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: "#/components/schemas/SiteSettings" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+    delete:
+      tags: [Admin - Pengaturan]
+      summary: Kosongkan seluruh data kontak
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Keempat field kontak menjadi null, objek SiteSettings lengkap dikembalikan
           content:
             application/json:
               schema:

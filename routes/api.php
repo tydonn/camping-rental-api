@@ -69,6 +69,8 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::delete('settings/hero-image', [AdminSettingController::class, 'destroyHeroImage']);
         Route::post('settings/maps-query', [AdminSettingController::class, 'updateMapsQuery']);
         Route::delete('settings/maps-query', [AdminSettingController::class, 'destroyMapsQuery']);
+        Route::post('settings/contact', [AdminSettingController::class, 'updateContact']);
+        Route::delete('settings/contact', [AdminSettingController::class, 'destroyContact']);
 
         Route::get('payments', [AdminPaymentController::class, 'index']);
         Route::post('payments/{payment}/verify', [AdminPaymentController::class, 'verify']);

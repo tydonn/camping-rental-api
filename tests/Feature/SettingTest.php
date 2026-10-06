@@ -173,4 +173,124 @@ class SettingTest extends TestCase
             ])
             ->assertForbidden();
     }
+
+    public function test_publik_melihat_data_kontak_kosong_oleh_default(): void
+    {
+        $this->getJson('/api/settings')
+            ->assertOk()
+            ->assertJsonPath('data.address', null)
+            ->assertJsonPath('data.phone', null)
+            ->assertJsonPath('data.email', null)
+            ->assertJsonPath('data.hours', null);
+    }
+
+    public function test_admin_bisa_mengatur_data_kontak(): void
+    {
+        SiteSetting::set(SiteSetting::KEY_HERO_IMAGE, 'hero/lama.png');
+        SiteSetting::set(SiteSetting::KEY_MAPS_QUERY, 'Berkah Alam Outdoor Organizer');
+
+        $this->actingAs($this->admin)
+            ->postJson('/api/admin/settings/contact', [
+                'address' => 'Jl. Raya Lembang No. 88, Lembang, Kabupaten Bandung Barat, Jawa Barat 40391',
+                'phone' => '+62 812-3456-7890',
+                'email' => 'halo@contoh.id',
+                'hours' => 'Setiap hari, 08.00 - 20.00 WIB',
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.address', 'Jl. Raya Lembang No. 88, Lembang, Kabupaten Bandung Barat, Jawa Barat 40391')
+            ->assertJsonPath('data.phone', '+62 812-3456-7890')
+            ->assertJsonPath('data.email', 'halo@contoh.id')
+            ->assertJsonPath('data.hours', 'Setiap hari, 08.00 - 20.00 WIB')
+            ->assertJsonPath('data.hero_image', 'hero/lama.png')
+            ->assertJsonPath('data.maps_query', 'Berkah Alam Outdoor Organizer');
+
+        $this->getJson('/api/settings')
+            ->assertOk()
+            ->assertJsonPath('data.email', 'halo@contoh.id');
+
+        $this->assertDatabaseHas('site_settings', [
+            'key' => SiteSetting::KEY_CONTACT,
+            'address' => 'Jl. Raya Lembang No. 88, Lembang, Kabupaten Bandung Barat, Jawa Barat 40391',
+            'phone' => '+62 812-3456-7890',
+            'email' => 'halo@contoh.id',
+            'hours' => 'Setiap hari, 08.00 - 20.00 WIB',
+        ]);
+    }
+
+    public function test_update_kontak_hanya_mengubah_field_yang_dikirim(): void
+    {
+        $this->actingAs($this->admin)
+            ->postJson('/api/admin/settings/contact', [
+                'address' => 'Alamat Lama',
+                'phone' => '081234567890',
+                'email' => 'lama@contoh.id',
+                'hours' => 'Setiap hari, 09.00 - 17.00 WIB',
+            ])
+            ->assertOk();
+
+        $this->actingAs($this->admin)
+            ->postJson('/api/admin/settings/contact', ['phone' => '081298765432'])
+            ->assertOk()
+            ->assertJsonPath('data.phone', '081298765432')
+            ->assertJsonPath('data.address', 'Alamat Lama')
+            ->assertJsonPath('data.email', 'lama@contoh.id')
+            ->assertJsonPath('data.hours', 'Setiap hari, 09.00 - 17.00 WIB');
+    }
+
+    public function test_validasi_data_kontak_ditolak(): void
+    {
+        $this->actingAs($this->admin)
+            ->postJson('/api/admin/settings/contact', [
+                'address' => str_repeat('a', 256),
+                'phone' => 'telepon!',
+                'email' => 'bukan-email',
+                'hours' => str_repeat('b', 121),
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['address', 'phone', 'email', 'hours']);
+    }
+
+    public function test_admin_bisa_mengosongkan_data_kontak(): void
+    {
+        $this->actingAs($this->admin)
+            ->postJson('/api/admin/settings/contact', [
+                'address' => 'Alamat Lama',
+                'phone' => '081234567890',
+                'email' => 'lama@contoh.id',
+                'hours' => 'Setiap hari, 09.00 - 17.00 WIB',
+            ])
+            ->assertOk();
+
+        $this->actingAs($this->admin)
+            ->deleteJson('/api/admin/settings/contact')
+            ->assertOk()
+            ->assertJsonPath('data.address', null)
+            ->assertJsonPath('data.phone', null)
+            ->assertJsonPath('data.email', null)
+            ->assertJsonPath('data.hours', null);
+
+        $this->getJson('/api/settings')
+            ->assertOk()
+            ->assertJsonPath('data.address', null);
+    }
+
+    public function test_non_admin_tidak_bisa_mengatur_data_kontak(): void
+    {
+        $this->actingAs($this->pelanggan)
+            ->postJson('/api/admin/settings/contact', ['phone' => '081234567890'])
+            ->assertForbidden();
+
+        $this->actingAs($this->pelanggan)
+            ->deleteJson('/api/admin/settings/contact')
+            ->assertForbidden();
+    }
+
+    public function test_tamu_tidak_bisa_mengatur_data_kontak(): void
+    {
+        $this->postJson('/api/admin/settings/contact', ['phone' => '081234567890'])
+            ->assertUnauthorized();
+
+        $this->deleteJson('/api/admin/settings/contact')
+            ->assertUnauthorized();
+    }
 }

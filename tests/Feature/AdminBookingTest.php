@@ -151,8 +151,8 @@ class AdminBookingTest extends TestCase
     private function buatBookingPaid(int $quantity = 1): Booking
     {
         $booking = Booking::factory()->for($this->pelanggan)->paid()->create([
-            'start_date' => '2026-09-10',
-            'end_date' => '2026-09-11',
+            'start_date' => today()->addDays(10)->toDateString(),
+            'end_date' => today()->addDays(11)->toDateString(),
             'total_amount' => 80000 * $quantity,
         ]);
 

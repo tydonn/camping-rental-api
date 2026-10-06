@@ -27,11 +27,19 @@ class BookingTest extends TestCase
         ]);
     }
 
+    /**
+     * Tanggal relatif terhadap hari ini agar test tidak kedaluwarsa.
+     */
+    private function tanggal(int $offset): string
+    {
+        return today()->addDays($offset)->toDateString();
+    }
+
     public function test_pelanggan_dapat_membuat_booking_dengan_snapshot_subtotal(): void
     {
         $response = $this->actingAs($this->pelanggan)->postJson('/api/bookings', [
-            'start_date' => '2026-09-10',
-            'end_date' => '2026-09-12',
+            'start_date' => $this->tanggal(10),
+            'end_date' => $this->tanggal(12),
             'items' => [
                 ['equipment_id' => $this->equipment->id, 'quantity' => 2],
             ],
@@ -53,8 +61,8 @@ class BookingTest extends TestCase
     public function test_snapshot_subtotal_tidak_berubah_meski_harga_master_naik(): void
     {
         $bookingId = $this->actingAs($this->pelanggan)->postJson('/api/bookings', [
-            'start_date' => '2026-09-10',
-            'end_date' => '2026-09-11',
+            'start_date' => $this->tanggal(10),
+            'end_date' => $this->tanggal(11),
             'items' => [['equipment_id' => $this->equipment->id, 'quantity' => 1]],
         ])->assertCreated()->json('data.id');
 
@@ -74,8 +82,8 @@ class BookingTest extends TestCase
 
         $this->actingAs($this->pelanggan)
             ->postJson('/api/bookings', [
-                'start_date' => '2026-09-10',
-                'end_date' => '2026-09-12',
+                'start_date' => $this->tanggal(10),
+                'end_date' => $this->tanggal(12),
                 'items' => [['equipment_id' => $this->equipment->id, 'quantity' => 10]],
             ])
             ->assertUnprocessable()
@@ -88,8 +96,8 @@ class BookingTest extends TestCase
     {
         // stok 5; booking aktif lain sudah memakai 4 pada rentang yang sama
         $existing = Booking::factory()->create([
-            'start_date' => '2026-09-10',
-            'end_date' => '2026-09-12',
+            'start_date' => $this->tanggal(10),
+            'end_date' => $this->tanggal(12),
         ]);
         $existing->items()->create([
             'equipment_id' => $this->equipment->id,
@@ -99,8 +107,8 @@ class BookingTest extends TestCase
 
         $this->actingAs($this->pelanggan)
             ->postJson('/api/bookings', [
-                'start_date' => '2026-09-11',
-                'end_date' => '2026-09-13',
+                'start_date' => $this->tanggal(11),
+                'end_date' => $this->tanggal(13),
                 'items' => [['equipment_id' => $this->equipment->id, 'quantity' => 3]],
             ])
             ->assertUnprocessable();
@@ -110,8 +118,8 @@ class BookingTest extends TestCase
     {
         $this->actingAs($this->pelanggan)
             ->postJson('/api/bookings', [
-                'start_date' => '2026-09-10',
-                'end_date' => '2026-09-12',
+                'start_date' => $this->tanggal(10),
+                'end_date' => $this->tanggal(12),
                 'items' => [],
             ])
             ->assertUnprocessable()
@@ -119,8 +127,8 @@ class BookingTest extends TestCase
 
         $this->actingAs($this->pelanggan)
             ->postJson('/api/bookings', [
-                'start_date' => '2026-09-10',
-                'end_date' => '2026-09-12',
+                'start_date' => $this->tanggal(10),
+                'end_date' => $this->tanggal(12),
                 'items' => [
                     ['equipment_id' => $this->equipment->id, 'quantity' => 1],
                     ['equipment_id' => $this->equipment->id, 'quantity' => 2],

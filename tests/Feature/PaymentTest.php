@@ -29,8 +29,8 @@ class PaymentTest extends TestCase
         $this->admin = User::factory()->admin()->create();
         $this->equipment = Equipment::factory()->create(['price_per_day' => 80000, 'stock' => 5]);
         $this->booking = Booking::factory()->for($this->pelanggan)->create([
-            'start_date' => '2026-09-10',
-            'end_date' => '2026-09-11',
+            'start_date' => today()->addDays(10)->toDateString(),
+            'end_date' => today()->addDays(11)->toDateString(),
             'total_amount' => 160000,
         ]);
         $this->booking->items()->create([
@@ -152,8 +152,8 @@ class PaymentTest extends TestCase
     {
         $this->actingAs($this->pelanggan)
             ->postJson('/api/bookings', [
-                'start_date' => '2026-09-10',
-                'end_date' => '2026-09-11',
+                'start_date' => today()->addDays(10)->toDateString(),
+                'end_date' => today()->addDays(11)->toDateString(),
                 'items' => [['equipment_id' => $this->equipment->id, 'quantity' => 1]],
             ])
             ->assertCreated()
